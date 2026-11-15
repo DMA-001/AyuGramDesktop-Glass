@@ -73,7 +73,10 @@ constexpr auto kKeepActiveForTrayIcon = crl::time(500);
 
 constexpr auto kAccentPolicyAttribute = 19;
 constexpr auto kAccentAcrylicBlurBehind = 4;
+constexpr auto kAccentFlagsDefault = 2;
 constexpr auto kAccentTintAbgr = DWORD(0x01000000);
+constexpr auto kSystemBackdropAttribute = DWORD(38);
+constexpr auto kDarkModeAttribute = DWORD(20);
 
 struct AccentPolicy {
 	int state = 0;
@@ -88,18 +91,49 @@ struct CompositionAttributeData {
 	SIZE_T size = 0;
 };
 
-void EnableGlassBackdrop(HWND hwnd) {
+[[nodiscard]] int GlassOption(const char *name, int fallback) {
+	auto ok = false;
+	const auto value = qEnvironmentVariableIntValue(name, &ok);
+	return ok ? value : fallback;
+}
+
+[[nodiscard]] DWORD GlassColorOption(const char *name, DWORD fallback) {
+	auto ok = false;
+	const auto value = qEnvironmentVariable(name).toUInt(&ok, 16);
+	return ok ? DWORD(value) : fallback;
+}
+
+void EnableBlurRegion(HWND hwnd) {
 	// WHY: Qt enables per-pixel alpha only for frameless or OpenGL
 	// windows, so the empty blur region is requested here by hand.
 	auto blur = DWM_BLURBEHIND();
 	blur.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
 	blur.fEnable = TRUE;
 	blur.hRgnBlur = CreateRectRgn(0, 0, -1, -1);
-	DwmEnableBlurBehindWindow(hwnd, &blur);
+	const auto result = DwmEnableBlurBehindWindow(hwnd, &blur);
 	if (blur.hRgnBlur) {
 		DeleteObject(blur.hRgnBlur);
 	}
+	LOG(("Glass: blur region result %1.").arg(qulonglong(ULONG(result))));
+}
 
+void EnableSystemBackdrop(HWND hwnd, int type) {
+	const auto dark = BOOL(TRUE);
+	DwmSetWindowAttribute(hwnd, kDarkModeAttribute, &dark, sizeof(dark));
+	const auto margins = MARGINS{ -1, -1, -1, -1 };
+	const auto extended = DwmExtendFrameIntoClientArea(hwnd, &margins);
+	const auto result = DwmSetWindowAttribute(
+		hwnd,
+		kSystemBackdropAttribute,
+		&type,
+		sizeof(type));
+	LOG(("Glass: backdrop %1, extend result %2, set result %3."
+		).arg(type
+		).arg(qulonglong(ULONG(extended))
+		).arg(qulonglong(ULONG(result))));
+}
+
+void EnableAccent(HWND hwnd, int state) {
 	using Method = BOOL(WINAPI*)(HWND, CompositionAttributeData*);
 	const auto user32 = GetModuleHandleW(L"user32.dll");
 	const auto method = user32
@@ -107,18 +141,40 @@ void EnableGlassBackdrop(HWND hwnd) {
 			GetProcAddress(user32, "SetWindowCompositionAttribute"))
 		: nullptr;
 	if (!method) {
+		LOG(("Glass: SetWindowCompositionAttribute not found."));
 		return;
 	}
 	auto policy = AccentPolicy{
-		.state = kAccentAcrylicBlurBehind,
-		.color = kAccentTintAbgr,
+		.state = state,
+		.flags = GlassOption("GLASS_ACCENT_FLAGS", kAccentFlagsDefault),
+		.color = GlassColorOption("GLASS_ACCENT_COLOR", kAccentTintAbgr),
 	};
 	auto data = CompositionAttributeData{
 		.attribute = kAccentPolicyAttribute,
 		.data = &policy,
 		.size = sizeof(policy),
 	};
-	method(hwnd, &data);
+	const auto result = method(hwnd, &data);
+	LOG(("Glass: accent state %1, flags %2, color %3, result %4."
+		).arg(policy.state
+		).arg(policy.flags
+		).arg(qulonglong(policy.color), 0, 16
+		).arg(int(result)));
+}
+
+void EnableGlassBackdrop(HWND hwnd) {
+	if (GlassOption("GLASS_BLUR_REGION", 1)) {
+		EnableBlurRegion(hwnd);
+	}
+	if (const auto type = GlassOption("GLASS_BACKDROP", 0)) {
+		EnableSystemBackdrop(hwnd, type);
+	}
+	const auto state = GlassOption(
+		"GLASS_ACCENT_STATE",
+		kAccentAcrylicBlurBehind);
+	if (state) {
+		EnableAccent(hwnd, state);
+	}
 }
 
 using namespace Microsoft::WRL;
@@ -761,7 +817,11 @@ void MainWindow::initHook() {
 	WTSRegisterSessionNotification(_hWnd, NOTIFY_FOR_THIS_SESSION);
 
 	if (testAttribute(Qt::WA_TranslucentBackground)) {
-		EnableGlassBackdrop(_hWnd);
+		shownValue() | rpl::on_next([=](bool shown) {
+			if (shown) {
+				EnableGlassBackdrop(_hWnd);
+			}
+		}, lifetime());
 	}
 
 	using namespace base::Platform;
