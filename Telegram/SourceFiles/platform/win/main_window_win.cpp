@@ -117,19 +117,22 @@ void EnableBlurRegion(HWND hwnd) {
 	LOG(("Glass: blur region result %1.").arg(qulonglong(ULONG(result))));
 }
 
+void ExtendFrame(HWND hwnd) {
+	const auto margins = MARGINS{ -1, -1, -1, -1 };
+	const auto result = DwmExtendFrameIntoClientArea(hwnd, &margins);
+	LOG(("Glass: extend frame result %1.").arg(qulonglong(ULONG(result))));
+}
+
 void EnableSystemBackdrop(HWND hwnd, int type) {
 	const auto dark = BOOL(TRUE);
 	DwmSetWindowAttribute(hwnd, kDarkModeAttribute, &dark, sizeof(dark));
-	const auto margins = MARGINS{ -1, -1, -1, -1 };
-	const auto extended = DwmExtendFrameIntoClientArea(hwnd, &margins);
 	const auto result = DwmSetWindowAttribute(
 		hwnd,
 		kSystemBackdropAttribute,
 		&type,
 		sizeof(type));
-	LOG(("Glass: backdrop %1, extend result %2, set result %3."
+	LOG(("Glass: backdrop %1, set result %2."
 		).arg(type
-		).arg(qulonglong(ULONG(extended))
 		).arg(qulonglong(ULONG(result))));
 }
 
@@ -166,7 +169,11 @@ void EnableGlassBackdrop(HWND hwnd) {
 	if (GlassOption("GLASS_BLUR_REGION", 1)) {
 		EnableBlurRegion(hwnd);
 	}
-	if (const auto type = GlassOption("GLASS_BACKDROP", 0)) {
+	const auto type = GlassOption("GLASS_BACKDROP", 0);
+	if (GlassOption("GLASS_EXTEND_FRAME", type ? 1 : 0)) {
+		ExtendFrame(hwnd);
+	}
+	if (type) {
 		EnableSystemBackdrop(hwnd, type);
 	}
 	const auto state = GlassOption(

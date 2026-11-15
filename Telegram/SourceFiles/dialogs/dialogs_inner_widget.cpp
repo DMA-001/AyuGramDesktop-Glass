@@ -1093,6 +1093,7 @@ void InnerWidget::paintEvent(QPaintEvent *e) {
 			? (row->key() == _chatPreviewRow.key)
 			: selected;
 		const auto cacheAllowed = _rowsScrollCache.scrolling()
+			&& !window()->testAttribute(Qt::WA_TranslucentBackground)
 			&& (!videoUserpic || !context.narrow)
 			&& !active
 			&& !cacheSelected
