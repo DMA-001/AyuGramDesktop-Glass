@@ -382,6 +382,10 @@ void SectionWidget::PaintBackground(
 		QRect clip,
 		bool paused) {
 	auto p = QPainter(widget);
+	if (widget->window()->testAttribute(Qt::WA_TranslucentBackground)) {
+		p.fillRect(clip, st::windowBg);
+		return;
+	}
 	if (fromy) {
 		p.translate(0, fromy);
 		clip = clip.translated(0, -fromy);

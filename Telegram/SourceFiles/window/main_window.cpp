@@ -401,7 +401,8 @@ QImage WithSmallCounter(QImage image, CounterLayerArgs &&args) {
 }
 
 MainWindow::MainWindow(not_null<Controller*> controller)
-: _controller(controller)
+: Ui::RpWindow(Platform::IsWindows())
+, _controller(controller)
 , _positionUpdatedTimer([=] { savePosition(); })
 , _outdated(Ui::CreateOutdatedBar(body(), cWorkingDir()))
 , _screenReaderBar(Ui::CreateScreenReaderBar(body(), [=] {

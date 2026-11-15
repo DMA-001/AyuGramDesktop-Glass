@@ -71,6 +71,56 @@ namespace {
 // icon click (both left or right button) was made from the active app.
 constexpr auto kKeepActiveForTrayIcon = crl::time(500);
 
+constexpr auto kAccentPolicyAttribute = 19;
+constexpr auto kAccentAcrylicBlurBehind = 4;
+constexpr auto kAccentTintAbgr = DWORD(0x01000000);
+
+struct AccentPolicy {
+	int state = 0;
+	int flags = 0;
+	DWORD color = 0;
+	int animation = 0;
+};
+
+struct CompositionAttributeData {
+	int attribute = 0;
+	void *data = nullptr;
+	SIZE_T size = 0;
+};
+
+void EnableGlassBackdrop(HWND hwnd) {
+	// WHY: Qt enables per-pixel alpha only for frameless or OpenGL
+	// windows, so the empty blur region is requested here by hand.
+	auto blur = DWM_BLURBEHIND();
+	blur.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
+	blur.fEnable = TRUE;
+	blur.hRgnBlur = CreateRectRgn(0, 0, -1, -1);
+	DwmEnableBlurBehindWindow(hwnd, &blur);
+	if (blur.hRgnBlur) {
+		DeleteObject(blur.hRgnBlur);
+	}
+
+	using Method = BOOL(WINAPI*)(HWND, CompositionAttributeData*);
+	const auto user32 = GetModuleHandleW(L"user32.dll");
+	const auto method = user32
+		? reinterpret_cast<Method>(
+			GetProcAddress(user32, "SetWindowCompositionAttribute"))
+		: nullptr;
+	if (!method) {
+		return;
+	}
+	auto policy = AccentPolicy{
+		.state = kAccentAcrylicBlurBehind,
+		.color = kAccentTintAbgr,
+	};
+	auto data = CompositionAttributeData{
+		.attribute = kAccentPolicyAttribute,
+		.data = &policy,
+		.size = sizeof(policy),
+	};
+	method(hwnd, &data);
+}
+
 using namespace Microsoft::WRL;
 
 // Taken from qtbase/src/gui/image/qpixmap_win.cpp
@@ -709,6 +759,10 @@ void MainWindow::initHook() {
 	}
 
 	WTSRegisterSessionNotification(_hWnd, NOTIFY_FOR_THIS_SESSION);
+
+	if (testAttribute(Qt::WA_TranslucentBackground)) {
+		EnableGlassBackdrop(_hWnd);
+	}
 
 	using namespace base::Platform;
 	auto factory = ComPtr<IUIViewSettingsInterop>();
