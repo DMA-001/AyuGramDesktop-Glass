@@ -72,7 +72,8 @@ namespace {
 constexpr auto kKeepActiveForTrayIcon = crl::time(500);
 
 constexpr auto kAccentPolicyAttribute = 19;
-constexpr auto kAccentAcrylicBlurBehind = 4;
+constexpr auto kAccentDisabled = 0;
+constexpr auto kBackdropAcrylic = 3;
 constexpr auto kAccentFlagsDefault = 2;
 constexpr auto kAccentTintAbgr = DWORD(0x01000000);
 constexpr auto kSystemBackdropAttribute = DWORD(38);
@@ -169,16 +170,14 @@ void EnableGlassBackdrop(HWND hwnd) {
 	if (GlassOption("GLASS_BLUR_REGION", 1)) {
 		EnableBlurRegion(hwnd);
 	}
-	const auto type = GlassOption("GLASS_BACKDROP", 0);
+	const auto type = GlassOption("GLASS_BACKDROP", kBackdropAcrylic);
 	if (GlassOption("GLASS_EXTEND_FRAME", type ? 1 : 0)) {
 		ExtendFrame(hwnd);
 	}
 	if (type) {
 		EnableSystemBackdrop(hwnd, type);
 	}
-	const auto state = GlassOption(
-		"GLASS_ACCENT_STATE",
-		kAccentAcrylicBlurBehind);
+	const auto state = GlassOption("GLASS_ACCENT_STATE", kAccentDisabled);
 	if (state) {
 		EnableAccent(hwnd, state);
 	}
